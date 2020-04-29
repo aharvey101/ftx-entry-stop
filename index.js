@@ -12,11 +12,11 @@ const { argv } = require("yargs")
     "Place a buy order for 1 ETH @ $150. If order is filled, places stop at $125. If stop is breached prior to entry order fill, cancels entry order, terminates and exits."
   )
   // '-p <tradingPair>'
-  .demand("pair")
+  .demand("p")
   .alias("p", "pair")
   .describe("p", "Set trading pair eg. BNBBTC")
   // '-a <amount>'
-  .demand("amount")
+  .demand("a")
   .number("a")
   .alias("a", "amount")
   .describe("a", "Set amount to buy/sell")
@@ -30,7 +30,7 @@ const { argv } = require("yargs")
   .alias("s", "stop-price")
   .describe("s", "Set stop-limit order stop price")
   // '-tf <timeframe>'
-  .demand('timeframe')
+  .demand('tf')
   .alias('tf', 'timeframe')
   .describe('tf', 'Sets the timeframe')
 
@@ -54,9 +54,10 @@ let entrySide,
   alreadyOrdered = false
 
 if (isShort) {
+  console.log('position is short')
   // Short entry Paramaters
   entrySide = "sell";
-  entryType = 'limit';
+  entryType = 'market';
   entryTriggerPrice = (entryPrice + 0.01)
   // ccxt short override
   ccxtOverride = {
@@ -64,7 +65,7 @@ if (isShort) {
   }
   // Short exit paramaters
   stopSide = 'buy'
-  stopType = 'limit'
+  stopType = 'stop'
   cancelPrice = (stopPrice - 0.01)
   ccxtstopOverride = {
     'orderPrice': stopPrice,
@@ -75,6 +76,7 @@ if (isShort) {
     'reduceOnly': true
   }
 } else if (!isShort) {
+
   // Long entry Paramaters
   entrySide = 'buy'
   entryType = 'stop' //stop limit, so use a conditional order with a trigger price
@@ -100,11 +102,13 @@ if (isShort) {
 
 console.log(isShort)
 
+let om1e = false;
 go()
 async function go() {
   await ftxWs.connect()
     .catch(err => console.log(err))
   let since = Date.now()
+  let gotCandles = []
   await ftxccxt.createOrder(pair, entryType, entrySide, amount, entryPrice, ccxtOverride)
     .then((order) => {
       console.log(order)
@@ -112,6 +116,10 @@ async function go() {
     .catch(err => console.log('Error posting entry: ' + err))
   await ftxWs.subscribe('ticker', pair);
   ftxWs.on(`${pair}::ticker`, function (res) {
+    ftxccxt.fetchOHLCV('BTC-PERP', timeframe, since, limit = undefined, params = {})
+      .then(candles => {
+        gotCandles = candles
+      })
 
     ticker = res
     console.log(ticker.last)
@@ -138,26 +146,27 @@ async function go() {
     // if price goes through entry
     if (
       //if long
-      (entryPrice > stopPrice && ticker.bid <= stopPrice)
+      (entryPrice > stopPrice && ticker.last >= entryPrice)
       //if short
-      || (entryPrice < stopPrice && ticker.ask >= stopPrice)
+      || (entryPrice < stopPrice && ticker.last <= entryPrice)
     ) {
       //get entry order fill details
       ftxccxt.fetchOrders(pair, since = undefined, 1)
         //place stop and target
         .then((res) => {
           //if the order has a status of closed?
-          console.log('placing orders and terminating')
-          otherOrders(res, alreadyOrdered)
+          console.log('placing stop')
+          stop(res)
           alreadyOrdered = true
 
         })
         .catch(err => console.log('Eror getting order' + err))
     }
-    orderMangementRule1()
+    console.log(gotCandles.length)
+    //orderManagement1(gotCandles)
   })
 
-  function otherOrders(res) {
+  function stop(res) {
     if (!alreadyOrdered) {
       // //calculate stuff for 1:1 target
       let avgFillPrice = res[0].info.avgFillPrice
@@ -174,32 +183,32 @@ async function go() {
   }
 }
 
-function orderMangementRule1() {
-  ftxccxt.fetchOHLCV('BTC-PERP', timeframe, since, limit = undefined, params = {})
-    .then(async res => {
-      console.log(res.length)
-      //if there are three items in the array then
-      if (res.length > 2) {
-        //if position is not in profit 3 candles after placing the entry order. cancel all orders and exit
-        if (!isShort && res[2][1] < entryPrice || isShort && res[2][1] > entryPrice) {
-          console.log('position is not in profit after 3 candles, cancelling position and exiting')
-          //close position
-          // Market orders may not always go through, this needs to be tested. and recoded if needed
-          ftxccxt.createOrder(pair, 'market', stopSide, amount, price = undefined, orderParams)
-            .catch(err => console.log('there was an error ' + err))
-          // Cancel all orders on pair
-          ftxccxt.cancelAllOrders(pair)
-            .then(() => {
-              ftxWs.terminate()
-              process.exit()
-            })
-        }
-      } else {
-
-      }
-    })
-    .catch(err => {
-      console.log('The error is' + err)
-    })
-  return
+async function orderManagement1(candles) {
+  // Check variable, if true so function doesn't run after triggered.
+  if (om1e) { ftxWs.terminate(), process.exit() }
+  if (candles.length > 2) {
+    console.log(candles.length)
+    //if position is not in profit 3 candles after placing the entry order. cancel all orders and exit
+    if (!isShort && candles[2][1] < entryPrice || isShort && candles[2][1] > entryPrice) {
+      console.log('position is not in profit after 3 candles, cancelling position and exiting')
+      //close position
+      // Market orders may not always go through, this needs to be tested. and recoded if needed
+      await ftxccxt.createOrder(pair, 'market', stopSide, amount, price = undefined, params = { 'reduceOnly': true })
+        .catch(err => console.log('there was an error ' + err))
+        .then((res) => {
+          console.log(`placed order ` + JSON.stringify(res))
+        })
+      // Cancel all orders on pair
+      await ftxccxt.cancelAllOrders(pair)
+        .then(() => {
+          console.log('cancelled all orders')
+          ftxWs.terminate()
+          process.exit()
+        })
+        .then(() => {
+        })
+      // Set variable so that this doesnt trigget again 
+      om1e = true;
+    }
+  }
 }
