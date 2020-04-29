@@ -29,13 +29,17 @@ const { argv } = require("yargs")
   .number("s")
   .alias("s", "stop-price")
   .describe("s", "Set stop-limit order stop price")
-  .default("F", false);
+  // '-tf <timeframe>'
+  .demand('timeframe')
+  .alias('tf', 'timeframe')
+  .describe('tf', 'Sets the timeframe')
 
 const {
   p: pair,
   a: amount,
   e: entryPrice,
   s: stopPrice,
+  tf: timeframe
 } = argv;
 console.log(argv)
 let isShort = entryPrice < stopPrice;
@@ -90,12 +94,13 @@ console.log(isShort)
 async function go() {
   await ftxWs.connect()
     .catch(err => console.log(err))
+  let since = Date.now()
   await ftxccxt.createOrder(pair, entryType, entrySide, amount, entryPrice, ccxtOverride)
     .then((order) => {
       console.log(order)
     })
     .catch(err => console.log('Error posting entry: ' + err))
-  await ftxWs.subscribe('ticker', 'BTC-PERP');
+  await ftxWs.subscribe('ticker', pair);
   ftxWs.on(`${pair}::ticker`, function (res) {
 
     ticker = res
@@ -109,7 +114,7 @@ async function go() {
     ) {
       // NEEDS TESTING
       // Get last order and cancel 
-      ftxccxt.fetchOpenOrders(pair, since = undefined, 1)
+      ftxccxt.fetchOpenOrders(pair, since, 1)
         .catch(err => console.log('Error getting order for cancel' + err))
         //cancel order
         .then(order => {
@@ -138,7 +143,16 @@ async function go() {
 
         })
         .catch(err => console.log('Eror getting order' + err))
+
     }
+    ftxccxt.fetchOHLCV('BTC-PERP', timeframe = timeframe, since, limit = 5, params = {})
+      .then(res => {
+        if (res.length() >= 4) {
+          if (!isShort && res[4][2] < entryPrice) {
+            console.log('the position is not in profit, reccomend closing')
+          }
+        }
+      })
   })
 
   const otherorders = (res) => {
