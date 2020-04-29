@@ -20,37 +20,62 @@ const orderParams = {
   'reduceOnly': true
 }
 
+let isShort = true;
 
 go()
 
-const since = Date.now()
+let oop = false
+let om1 = false
+const since = Date.now() - 120000
 async function go() {
+  let gotCandles
   await ftxWs.connect()
     .catch(err => console.log(err));
   await ftxWs.subscribe('ticker', pair);
   ftxWs.on(`${pair}::ticker`, async function (res) {
-    //console.log(res.last)
     ftxccxt.fetchOHLCV('BTC-PERP', timeframe, since, limit = undefined, params = {})
-      .then(async res => {
-        //if position is not in profit after 3 candles of placing the entry order. cancel all orders and exit
-        if (res[2][1] < entryPrice) {
-          console.log('position is not in profit after 3 candles, cancelling position and exiting')
-          //close position
-          ftxccxt.createOrder(pair, 'market', 'sell', '0.1', price = undefined, orderParams)
-            .catch(err => console.log(err))
-          // Cancel all orders on pair
-          ftxccxt.cancelAllOrders(pair)
-            .then(() => {
-              ftxWs.terminate()
-              process.exit()
-            })
-        }
+      .then(candles => {
+        gotCandles = candles
       })
-      .catch(err => {
-        console.log(err)
-      })
+
+    orderManagement1(gotCandles)
+    //console.log(res.last)
+    placeOtherOrders(res)
+    oop = true;
   })
 }
 
+function placeOtherOrders(res) {
+  if (oop) {
+    return;
+  } else {
+    console.log('placing the other orders')
+  }
+}
 
 
+function orderManagement1(candles) {
+  // statement so function doesn't run after triggered.
+  if (om1) {
+    return;
+    //if there are three items in the array then
+  } else if (candles.length = 2) {
+    // Set variable so that this doesnt trigget again 
+    om1 = true;
+    //if position is not in profit 3 candles after placing the entry order. cancel all orders and exit
+    if (!isShort && res[2][1] < entryPrice || isShort && res[2][1] > entryPrice) {
+      console.log('position is not in profit after 3 candles, cancelling position and exiting')
+      //close position
+      // Market orders may not always go through, this needs to be tested. and recoded if needed
+      ftxccxt.createOrder(pair, 'market', stopSide, amount, price = undefined, orderParams)
+        .catch(err => console.log('there was an error ' + err))
+      // Cancel all orders on pair
+      ftxccxt.cancelAllOrders(pair)
+        .then(() => {
+          ftxWs.terminate()
+          process.exit()
+        })
+    }
+  } else {
+  }
+}

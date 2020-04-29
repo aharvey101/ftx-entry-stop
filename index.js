@@ -70,7 +70,10 @@ if (isShort) {
     'orderPrice': stopPrice,
     'reduceOnly': true
   }
-
+  // Order Mangement Rule 1 paramaters:
+  orderParams = {
+    'reduceOnly': true
+  }
 } else if (!isShort) {
   // Long entry Paramaters
   entrySide = 'buy'
@@ -87,10 +90,17 @@ if (isShort) {
   ccxtstopOverride = {
     'orderPrice': stopPrice
   }
+  // Order Mangement Rule 1 paramaters:
+  orderParams = {
+    'reduceOnly': true
+  }
 }
+
+
 
 console.log(isShort)
 
+go()
 async function go() {
   await ftxWs.connect()
     .catch(err => console.log(err))
@@ -138,45 +148,58 @@ async function go() {
         .then((res) => {
           //if the order has a status of closed?
           console.log('placing orders and terminating')
-          otherorders(res)
+          otherOrders(res, alreadyOrdered)
           alreadyOrdered = true
 
         })
         .catch(err => console.log('Eror getting order' + err))
-
     }
-    ftxccxt.fetchOHLCV('BTC-PERP', timeframe = timeframe, since, limit = 5, params = {})
-      .then(res => {
-        if (res.length() >= 4) {
-          if (!isShort && res[4][2] < entryPrice) {
-            console.log('the position is not in profit, reccomend closing')
-          }
-        }
-      })
+    orderMangementRule1()
   })
 
-  const otherorders = (res) => {
-    if (alreadyOrdered) {
-      console.log('already placed orders, terminating')
-      ftxWs.terminate()
-      process.exit()
-    }
-    // //calculate stuff for 1:1 target
-    let avgFillPrice = res[0].info.avgFillPrice
-    console.log('the avg fill price is: ' + avgFillPrice)
-    // let targetPrice = (avgFillPrice + (avgFillPrice - stopPrice))
-    // console.log('the target price is ' + targetPrice)
-    //if avgFillPrice is there, means order has been filled
-    if (avgFillPrice != null) {
-      //place stoploss order
-      console.log('posting stoploss')
-      ftxccxt.createOrder(pair, stopType, stopSide, amount, stopPrice, ccxtstopOverride)
-        .then(async (res) => {
-          console.log('Stop loss place at price ' + res.info.price)
-          // ftxWs.terminate()
-          // process.exit()
-        }).catch(err => console.log('Error placing Stop ' + err))
+  function otherOrders(res) {
+    if (!alreadyOrdered) {
+      // //calculate stuff for 1:1 target
+      let avgFillPrice = res[0].info.avgFillPrice
+      if (avgFillPrice != null) {
+        //place stoploss order
+        console.log('posting stoploss')
+        ftxccxt.createOrder(pair, stopType, stopSide, amount, stopPrice, ccxtstopOverride)
+          .then(async (res) => {
+            console.log('Stop loss place at price ' + res.info.price)
+          }).catch(err => console.log('Error placing Stop ' + err))
+      }
+      return
     }
   }
 }
-go()
+
+function orderMangementRule1() {
+  ftxccxt.fetchOHLCV('BTC-PERP', timeframe, since, limit = undefined, params = {})
+    .then(async res => {
+      console.log(res.length)
+      //if there are three items in the array then
+      if (res.length > 2) {
+        //if position is not in profit 3 candles after placing the entry order. cancel all orders and exit
+        if (!isShort && res[2][1] < entryPrice || isShort && res[2][1] > entryPrice) {
+          console.log('position is not in profit after 3 candles, cancelling position and exiting')
+          //close position
+          // Market orders may not always go through, this needs to be tested. and recoded if needed
+          ftxccxt.createOrder(pair, 'market', stopSide, amount, price = undefined, orderParams)
+            .catch(err => console.log('there was an error ' + err))
+          // Cancel all orders on pair
+          ftxccxt.cancelAllOrders(pair)
+            .then(() => {
+              ftxWs.terminate()
+              process.exit()
+            })
+        }
+      } else {
+
+      }
+    })
+    .catch(err => {
+      console.log('The error is' + err)
+    })
+  return
+}
