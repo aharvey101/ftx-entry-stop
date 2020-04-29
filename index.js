@@ -79,7 +79,7 @@ if (isShort) {
 
   // Long entry Paramaters
   entrySide = 'buy'
-  entryType = 'stop' //stop limit, so use a conditional order with a trigger price
+  entryType = 'limit' //stop limit, so use a conditional order with a trigger price
   entryTriggerPrice = (entryPrice + 0.01)
   // ccxt short override
   ccxtOverride = {
@@ -154,16 +154,12 @@ async function go() {
       ftxccxt.fetchOrders(pair, since = undefined, 1)
         //place stop and target
         .then((res) => {
-          //if the order has a status of closed?
-          console.log('placing stop')
           stop(res)
           alreadyOrdered = true
-
         })
         .catch(err => console.log('Eror getting order' + err))
+      orderManagement1(gotCandles)
     }
-    console.log(gotCandles.length)
-    //orderManagement1(gotCandles)
   })
 
   function stop(res) {
@@ -175,7 +171,7 @@ async function go() {
         console.log('posting stoploss')
         ftxccxt.createOrder(pair, stopType, stopSide, amount, stopPrice, ccxtstopOverride)
           .then(async (res) => {
-            console.log('Stop loss place at price ' + res.info.price)
+            console.log('Stop loss place at price ' + JSON.stringify(res))
           }).catch(err => console.log('Error placing Stop ' + err))
       }
       return
@@ -187,7 +183,7 @@ async function orderManagement1(candles) {
   // Check variable, if true so function doesn't run after triggered.
   if (om1e) { ftxWs.terminate(), process.exit() }
   if (candles.length > 2) {
-    console.log(candles.length)
+    console.log('the candle array length is ' + candles.length)
     //if position is not in profit 3 candles after placing the entry order. cancel all orders and exit
     if (!isShort && candles[2][1] < entryPrice || isShort && candles[2][1] > entryPrice) {
       console.log('position is not in profit after 3 candles, cancelling position and exiting')
