@@ -52,8 +52,8 @@ let entrySide,
 if (isShort) {
   // Short entry Paramaters
   entrySide = "sell";
-  entryType = 'limit';
-  entryTriggerPrice = (entryPrice + 0.01)
+  entryType = 'stop';
+  entryTriggerPrice = (entryPrice + 0.5)
   // ccxt short override
   ccxtOverride = {
     'orderPrice': entryTriggerPrice,
