@@ -8,8 +8,12 @@ const ftxWs = new FTXWS({ apiKey: process.env.API_KEY, secret: process.env.API_S
 
 const { argv } = require("yargs")
   .example(
-    "node index.js -p ETH-PERP -a 1 -e 150 -s 125",
-    "Place a buy order for 1 ETH @ $150. If order is filled, places stop at $125. If stop is breached prior to entry order fill, cancels entry order, terminates and exits."
+    "node index.js -p ETH-PERP -a 1 -e 150 -s 125 -tf 1h",
+    "Place a buy order for 1 ETH @ $150.",
+    "If order is filled, places stop at $125.",
+    "If stop is breached prior to entry order fill, cancels entry order, terminates and exits.",
+    "If three candles go by (set by the -tf arg, ie: 1h = 1 hour candles), and the trade is not in profit",
+    "the position is liquidated via market order and all orders for the pair are cancelled "
   )
   // '-p <tradingPair>'
   .demand("p")
@@ -142,7 +146,6 @@ async function go() {
           process.exit()
         })
     }
-    // UNIT TEST
     // if price goes through entry
     if (
       //if long
