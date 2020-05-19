@@ -3,7 +3,16 @@ const CCXT = require('ccxt');
 const FTXWS = require('ftx-api-ws')
 require('dotenv').config()
 
-const ftxccxt = new CCXT.ftx({ apiKey: process.env.API_KEY, secret: process.env.API_SECRET })
+const ftxccxt = new CCXT.ftx({
+  enableRateLimit: true,
+  apiKey: process.env.API_KEY,
+  secret: process.env.API_SECRET,
+  options: {
+    cancelOrder: {
+      method: 'privateDeleteConditionalOrdersOrderId'
+    }
+  }
+})
 const ftxWs = new FTXWS({ apiKey: process.env.API_KEY, secret: process.env.API_SECRET })
 
 const { argv } = require("yargs")
@@ -47,6 +56,7 @@ const {
 } = argv;
 console.log(argv)
 let isShort = entryPrice < stopPrice;
+console.log(isShort)
 
 let entrySide,
   entryType,
@@ -61,7 +71,7 @@ if (isShort) {
   console.log('position is short')
   // Short entry Paramaters
   entrySide = "sell";
-  entryType = 'market';
+  entryType = 'stop';
   entryTriggerPrice = (entryPrice + 0.01)
   // ccxt short override
   ccxtOverride = {
@@ -83,7 +93,7 @@ if (isShort) {
 
   // Long entry Paramaters
   entrySide = 'buy'
-  entryType = 'limit' //stop limit, so use a conditional order with a trigger price
+  entryType = 'stop' //stop limit, so use a conditional order with a trigger price
   entryTriggerPrice = (entryPrice + 0.01)
   // ccxt short override
   ccxtOverride = {
@@ -109,6 +119,7 @@ console.log(isShort)
 let om1e = false;
 go()
 async function go() {
+  let orderId = 0;
   await ftxWs.connect()
     .catch(err => console.log(err))
   let since = Date.now()
@@ -116,6 +127,8 @@ async function go() {
   await ftxccxt.createOrder(pair, entryType, entrySide, amount, entryPrice, ccxtOverride)
     .then((order) => {
       console.log(order)
+      orderId = order.id
+      console.log(orderId)
     })
     .catch(err => console.log('Error posting entry: ' + err))
   await ftxWs.subscribe('ticker', pair);
@@ -135,16 +148,15 @@ async function go() {
       (!isShort && ticker.last < stopPrice)
     ) {
       // NEEDS TESTING
-      // Get last order and cancel 
-      ftxccxt.fetchOpenOrders(pair, since, 1)
-        .catch(err => console.log('Error getting order for cancel' + err))
-        //cancel order
-        .then(order => {
-          console.log('Stop has been breached prior to entry,Cancelling orders and exiting ')
-          ftxccxt.cancelOrder(order[0].id)
-          ftxWs.terminate()
-          process.exit()
+      // Get last order and cancel
+      console.log('Stop breached, cancelling Orders')
+      ftxccxt.cancelAllOrders(pair)
+        .then(res => {
+          console.log(res),
+            ftxWs.terminate(),
+            process.exit()
         })
+        .catch(err => console.log(err))
     }
     // if price goes through entry
     if (
@@ -161,7 +173,7 @@ async function go() {
           alreadyOrdered = true
         })
         .catch(err => console.log('Eror getting order' + err))
-      orderManagement1(gotCandles)
+      //orderManagement1(gotCandles)
     }
   })
 

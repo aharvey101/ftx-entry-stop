@@ -54,7 +54,6 @@ function placeOtherOrders(res) {
   }
 }
 
-
 async function orderManagement1(candles) {
   // statement so function doesn't run after triggered.
   if (om1e) { ftxWs.terminate(), process.exit() }
